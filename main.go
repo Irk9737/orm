@@ -3,45 +3,25 @@ package main
 import (
 	"fmt"
 	"github.com/gin-gonic/gin"
+	_ "github.com/go-sql-driver/mysql"
 	"net/http"
 	"time"
 	"xorm.io/xorm"
 )
-
-//import (
-//	"github.com/gin-gonic/gin"
-//	_ "github.com/go-sql-driver/mysql"
-//	"orm/business"
-//	""
-//	"orm/db"
-//)
-//
-//func main() {
-//	r := gin.Default()
-//	//db := new(db.ValueOrm[business.Stu])
-//	db := new(db.ValueOrm)
-//	db.ID = "stu_num"
-//	var err error
-//	db.XormVal.Xorm, err = db..GetEngine()
-//	if err != nil {
-//		panic(err)
-//	}
-//
-//	// 数据库的 CRUD ---> gin 的 POST GET PUT DELETE 方法
-//	//var ormVal orm.ValueOrm[orm.Stu]
-//	r.POST("xorm/insert", db.InsertData)
-//	r.GET("xorm/get", db.GetData)
-//	//r.GET("xorm/mulget", orm.XormGetMulData)
-//	//r.PUT("xorm/update", orm.XormUpdateData)
-//	//r.DELETE("xorm/delete", orm.XormDeleteData)
-//	_ = r.Run(":8080")
-//}
 
 // xorm 依赖: go get xorm.io/xorm
 // 通过 xorm 进行数据库的 CRUD 操作
 
 var x *xorm.Engine
 var xormResponse XormResponse
+
+type XormValue struct {
+	Xorm *xorm.Engine
+}
+
+type OrmValue struct {
+	xVal XormValue
+}
 
 // Stu 定义结构体(xorm 支持双向映射)：没有表会进行创建
 type Stu struct {
@@ -61,7 +41,7 @@ type XormResponse struct {
 }
 
 func init() {
-	sqlStr := "root:010729@tcp(127.0.0.1:3306)/xorm?charset=utf8mb4&parseTime=true&loc=Local" // xorm: 数据库名称
+	sqlStr := "root:pwd@tcp(127.0.0.1:3306)/xorm?charset=utf8mb4&parseTime=true&loc=Local" // xorm: 数据库名称
 	var err error
 	// 1、创建数据库引擎
 	x, err = xorm.NewEngine("mysql", sqlStr)
@@ -78,141 +58,105 @@ func init() {
 func main() {
 	r := gin.Default()
 	// 数据库的 CRUD ---> gin 的 POST GET PUT DELETE 方法
-	r.POST("xorm/insert", xormInsertData)
-	r.GET("xorm/get", xormGetData)
-	r.GET("xorm/mulget", xormGetMulData)
-	r.PUT("xorm/update", xormUpdateData)
-	r.DELETE("xorm/delete", xormDeleteData)
+	r.POST("xorm/insert", XormInsertData[Stu])
+	r.GET("xorm/get", XormGetData[Stu])
+	r.GET("xorm/mulget", XormGetMulData[Stu])
+	r.PUT("xorm/update", XormUpdateData)
+	r.DELETE("xorm/delete", XormDeleteData[Stu])
 	r.Run(":8080")
 }
 
-// xormUpdateData 删除操作
-func xormDeleteData(c *gin.Context) {
+// XormUpdateData 删除操作
+func XormDeleteData[T any](c *gin.Context) {
 	stuNum := c.Query("stu_num")
 	// 1、先查询
-	var stus []Stu
-	err := x.Where("stu_num=?", stuNum).Find(&stus)
-	if err != nil || len(stus) <= 0 {
-		xormResponse.Code = http.StatusBadRequest
-		xormResponse.Message = "数据不存在"
-		xormResponse.Data = "error"
-		c.JSON(http.StatusOK, xormResponse)
+	//var stus []Stu
+	var typs []T
+	err := x.Where("stu_num=?", stuNum).Find(&typs)
+	if err != nil || len(typs) <= 0 {
+		HandleResponse(c, http.StatusBadRequest, "数据不存在", "error")
 		return
 	}
 	// 2、再删除
 	affected, err := x.Where("stu_num=?", stuNum).Delete(&Stu{})
 	if err != nil || affected <= 0 {
-		xormResponse.Code = http.StatusBadRequest
-		xormResponse.Message = "删除失败"
-		xormResponse.Data = "error"
-		c.JSON(http.StatusOK, xormResponse)
+		HandleResponse(c, http.StatusBadRequest, "删除失败", "error")
 		return
 	}
-	xormResponse.Code = http.StatusOK
-	xormResponse.Message = "删除成功"
-	xormResponse.Data = "OK"
-	c.JSON(http.StatusOK, xormResponse)
+	HandleResponse(c, http.StatusOK, "删除成功", "OK")
 	fmt.Println(affected) // 打印结果
 }
 
-// xormUpdateData 修改操作
-func xormUpdateData(c *gin.Context) {
+// XormUpdateData 修改操作
+func XormUpdateData(c *gin.Context) {
 	var s Stu
 	err := c.Bind(&s)
 	if err != nil {
-		xormResponse.Code = http.StatusBadRequest
-		xormResponse.Message = "参数错误"
-		xormResponse.Data = "error"
-		c.JSON(http.StatusOK, xormResponse)
+		HandleResponse(c, http.StatusBadRequest, "参数错误", "error")
 		return
 	}
 	// 1、先查询
 	var stus []Stu
 	err = x.Where("stu_num=?", s.StuNum).Find(&stus)
 	if err != nil || len(stus) <= 0 {
-		xormResponse.Code = http.StatusBadRequest
-		xormResponse.Message = "数据不存在"
-		xormResponse.Data = "error"
-		c.JSON(http.StatusOK, xormResponse)
+		HandleResponse(c, http.StatusBadRequest, "数据不存在", "error")
 		return
 	}
 	// 2、再修改
 	affected, err := x.Where("stu_num=?", s.StuNum).Update(&Stu{Name: s.Name, Age: s.Age})
 	if err != nil || affected <= 0 {
-		xormResponse.Code = http.StatusBadRequest
-		xormResponse.Message = "修改失败"
-		xormResponse.Data = "error"
-		c.JSON(http.StatusOK, xormResponse)
+		HandleResponse(c, http.StatusBadRequest, "修改失败", "error")
 		return
 	}
-	xormResponse.Code = http.StatusOK
-	xormResponse.Message = "修改成功"
-	xormResponse.Data = "OK"
-	c.JSON(http.StatusOK, xormResponse)
+	HandleResponse(c, http.StatusOK, "修改成功", "OK")
 	fmt.Println(affected) // 打印结果
 }
 
-// xormGetMulData 查询操作(多条记录)
-func xormGetMulData(c *gin.Context) {
+// XormGetMulData 查询操作(多条记录)
+func XormGetMulData[T any](c *gin.Context) {
 	name := c.Query("name")
-	var stus []Stu
-	err := x.Where("name=?", name).And("age>20").Limit(10, 0).Asc("age").Find(&stus)
+	var typs []T
+	err := x.Where("name=?", name).And("age>20").Limit(10, 0).Asc("age").Find(&typs)
 	if err != nil {
-		xormResponse.Code = http.StatusBadRequest
-		xormResponse.Message = "查询错误"
-		xormResponse.Data = "error"
-		c.JSON(http.StatusOK, xormResponse)
+		HandleResponse(c, http.StatusBadRequest, "查询错误", "error")
 		return
 	}
-	xormResponse.Code = http.StatusOK
-	xormResponse.Message = "查询成功"
-	xormResponse.Data = stus
-	c.JSON(http.StatusOK, xormResponse)
+	HandleResponse(c, http.StatusOK, "查询成功", typs)
 }
 
-// xormGetData 查询操作(单条记录)
-func xormGetData(c *gin.Context) {
+func QueryData[T any](c *gin.Context) ([]T, error) {
 	stuNum := c.Query("stu_num")
-	var stus []Stu
-	err := x.Where("stu_num=?", stuNum).Find(&stus)
-	if err != nil {
-		xormResponse.Code = http.StatusBadRequest
-		xormResponse.Message = "查询错误"
-		xormResponse.Data = "error"
-		c.JSON(http.StatusOK, xormResponse)
-		return
-	}
-	xormResponse.Code = http.StatusOK
-	xormResponse.Message = "查询成功"
-	xormResponse.Data = stus
-	c.JSON(http.StatusOK, xormResponse)
+	var types []T
+	err := x.Where("stu_num=?", stuNum).Find(&types)
+	return types, err
 }
 
-// xormInsertData 插入操作
-func xormInsertData(c *gin.Context) {
-	var s Stu
-	err := c.Bind(&s)
+// XormGetData 查询操作(单条记录)
+func XormGetData[T any](c *gin.Context) {
+	typs, err := QueryData[T](c)
 	if err != nil {
-		xormResponse.Code = http.StatusBadRequest
-		xormResponse.Message = "参数错误"
-		xormResponse.Data = "error"
-		c.JSON(http.StatusOK, xormResponse)
+		HandleResponse(c, http.StatusBadRequest, "查询错误", "error")
+		return
+	}
+	HandleResponse(c, http.StatusOK, "查询成功", typs)
+}
+
+// XormInsertData 插入操作
+func XormInsertData[T any](c *gin.Context) {
+	var typ T
+	err := c.Bind(&typ)
+	if err != nil {
+		HandleResponse(c, http.StatusBadRequest, "参数错误", "error")
 		return
 	}
 	// affected：受影响记录行数
-	affected, err := x.Insert(s)
+	affected, err := x.Insert(typ)
 	if err != nil || affected <= 0 {
 		fmt.Printf("insert failed, err:%v\n", err)
-		xormResponse.Code = http.StatusBadRequest
-		xormResponse.Message = "写入失败"
-		xormResponse.Data = err
-		c.JSON(http.StatusOK, xormResponse)
+		HandleResponse(c, http.StatusBadRequest, "写入失败", err)
 		return
 	}
-	xormResponse.Code = http.StatusOK
-	xormResponse.Message = "写入成功"
-	xormResponse.Data = "OK"
-	c.JSON(http.StatusOK, xormResponse)
+	HandleResponse(c, http.StatusOK, "写入成功", "OK")
 	fmt.Println(affected) // 打印结果
 }
 
