@@ -14,7 +14,7 @@ Content-Type: application/json
 
 {
   "stu_num": "9289943",
-  "name": "李四",
+  "name": "张三",
   "age": 30
 }
 
